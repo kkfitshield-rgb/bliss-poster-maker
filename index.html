@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journey to Bliss - Poster Maker</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; text-align: center; background: #f0f2f5; padding: 20px; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        
+        /* Canvas Styling */
+        .canvas-container { 
+            position: relative; 
+            display: inline-block; 
+            margin-top: 20px; 
+            border: 3px solid #d4af37; 
+            background: #fff;
+            cursor: move; /* Shows user they can drag */
+            overflow: hidden;
+        }
+        canvas { display: block; max-width: 100%; height: auto; }
+
+        /* Controls Styling */
+        .controls { margin-bottom: 20px; padding: 20px; border-bottom: 1px solid #eee; }
+        .zoom-section { margin: 15px 0; display: none; padding: 10px; background: #fff9e6; border-radius: 8px; }
+        input[type="range"] { width: 250px; cursor: pointer; accent-color: #d4af37; }
+        
+        button { 
+            padding: 14px 35px; 
+            background-color: #d4af37; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            border-radius: 50px; 
+            font-size: 16px;
+            font-weight: bold; 
+            transition: 0.3s; 
+            box-shadow: 0 4px 10px rgba(212, 175, 55, 0.3);
+        }
+        button:hover { background-color: #b59021; transform: translateY(-2px); }
+        button:disabled { background-color: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+        
+        .hint { font-size: 0.85em; color: #666; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="color: #004d40;">#JoinTheJourneyToBliss Poster Maker</h2>
+    <p>Upload your photo, then <b>zoom and drag</b> it to fit the frame perfectly.</p>
+
+    <div class="controls">
+        <input type="file" id="uploadInput" accept="image/*">
+        
+        <div id="zoomWrapper" class="zoom-section">
+            <label style="font-weight:bold;">Adjust Zoom: </label>
+            <input type="range" id="zoomSlider" min="1" max="4" step="0.01" value="1">
+            <p class="hint">💡 <b>Tip:</b> Click and drag the photo on the poster to move it!</p>
+        </div>
+        
+        <br>
+        <button id="downloadBtn" disabled>Download My Poster</button>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="posterCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('posterCanvas');
+    const ctx = canvas.getContext('2d');
+    const uploadInput = document.getElementById('uploadInput');
+    const zoomSlider = document.getElementById('zoomSlider');
+    const zoomWrapper = document.getElementById('zoomWrapper');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    // --- COORDINATES AS REQUESTED ---
+    const FRAME_X = 429;   
+    const FRAME_Y = 303;   
+    const FRAME_W = 165;   // Width of your white box
+    const FRAME_H = 165;   // Height of your white box
+    const CORNER_RADIUS = 5; 
+
+    const posterImg = new Image();
+    posterImg.crossOrigin = "anonymous";
+
+    // ADDED ERROR HANDLING
+    posterImg.onerror = function() {
+        alert("Error: 'poster.png' not found! Make sure the image is in the same folder as this HTML file.");
+    };
+    
+    posterImg.onload = () => {
+        console.log("Poster loaded successfully");
+        canvas.width = posterImg.width;
+        canvas.height = posterImg.height;
+        drawCanvas();
+    };
+    
+    posterImg.src = 'poster.png'; // Make sure this matches your file name exactly
+ 
+    
+    let uploadedImg = null;
+    let zoomFactor = 1;
+    let imgOffsetX = 0; 
+    let imgOffsetY = 0; 
+    let isDragging = false;
+    let startX, startY;
+
+    posterImg.onload = () => {
+        canvas.width = posterImg.width;
+        canvas.height = posterImg.height;
+        drawCanvas();
+    };
+
+    uploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                uploadedImg = img;
+                zoomWrapper.style.display = 'block';
+                zoomFactor = 1;
+                zoomSlider.value = 1;
+                imgOffsetX = 0; 
+                imgOffsetY = 0;
+                drawCanvas();
+                downloadBtn.disabled = false;
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    zoomSlider.addEventListener('input', (e) => {
+        zoomFactor = parseFloat(e.target.value);
+        drawCanvas();
+    });
+
+    // --- MOUSE & TOUCH INTERACTION ---
+    function getEventPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        // Account for CSS scaling of the canvas
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
+        };
+    }
+
+    const startAction = (e) => {
+        if (!uploadedImg) return;
+        isDragging = true;
+        const pos = getEventPos(e);
+        startX = pos.x - imgOffsetX;
+        startY = pos.y - imgOffsetY;
+    };
+
+    const moveAction = (e) => {
+        if (!isDragging) return;
+        e.preventDefault(); // Stop page scrolling while dragging
+        const pos = getEventPos(e);
+        imgOffsetX = pos.x - startX;
+        imgOffsetY = pos.y - startY;
+        drawCanvas();
+    };
+
+    const stopAction = () => isDragging = false;
+
+    // Desktop Events
+    canvas.addEventListener('mousedown', startAction);
+    window.addEventListener('mousemove', moveAction);
+    window.addEventListener('mouseup', stopAction);
+    
+    // Mobile Events
+    canvas.addEventListener('touchstart', startAction, {passive: false});
+    window.addEventListener('touchmove', moveAction, {passive: false});
+    window.addEventListener('touchend', stopAction);
+
+    function drawCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 1. Draw Background Poster
+        ctx.drawImage(posterImg, 0, 0);
+
+        if (uploadedImg) {
+            ctx.save();
+            
+            // 2. Clip to the fixed box at 429, 303
+            ctx.beginPath();
+            ctx.roundRect(FRAME_X, FRAME_Y, FRAME_W, FRAME_H, CORNER_RADIUS);
+            ctx.clip();
+
+            // 3. Scaling Logic (Object-Fit: Cover + User Zoom)
+            const baseScale = Math.max(FRAME_W / uploadedImg.width, FRAME_H / uploadedImg.height);
+            const finalScale = baseScale * zoomFactor;
+            
+            const dW = uploadedImg.width * finalScale;
+            const dH = uploadedImg.height * finalScale;
+            
+            // Calculate centering
+            const centerX = FRAME_X + (FRAME_W - dW) / 2;
+            const centerY = FRAME_Y + (FRAME_H - dH) / 2;
+
+            // Apply Drag Offsets
+            ctx.drawImage(uploadedImg, centerX + imgOffsetX, centerY + imgOffsetY, dW, dH);
+            
+            ctx.restore();
+        }
+    }
+
+    // --- DOWNLOAD LOGIC ---
+    downloadBtn.addEventListener('click', () => {
+        try {
+            const dataUrl = canvas.toDataURL('image/png', 1.0);
+            const link = document.createElement('a');
+            link.download = 'My-Journey-To-Bliss-Poster.png';
+            link.href = dataUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            alert("Security Error: Please run this file on a local server (Live Server) or a web host to enable downloads.");
+            console.error(err);
+        }
+    });
+</script>
+</body>
+</html>
